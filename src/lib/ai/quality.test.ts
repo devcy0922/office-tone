@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { evaluateIntentPreservation, evaluateParameterShift } from "@/lib/ai/quality";
-import { extractJsonObject, hasChineseContamination, validateOutput } from "@/lib/ai/validator";
+import { extractJsonObject, hasChineseContamination, stripLabelLeak, validateOutput } from "@/lib/ai/validator";
 import { PRESETS } from "@/lib/presets";
 import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
+import { TONE_MAX, TONE_MIN } from "@/lib/ai/types";
 
 describe("validator", () => {
   it("parses fenced JSON", () => {
@@ -42,6 +43,37 @@ describe("validator", () => {
     const result = validateOutput(raw);
     expect(result.rewritten.startsWith("오늘")).toBe(true);
     expect(result.rewritten).toContain("어렵");
+  });
+
+  it("parses v candidates and kept keys", () => {
+    const raw = '{"v":["오늘은 완료가 어렵습니다.","오늘 일정으로는 진행이 어렵습니다."],"kept":["오늘 불가"]}';
+    const result = validateOutput(raw);
+    expect(result.ok).toBe(true);
+    expect(result.candidates).toHaveLength(2);
+    expect(result.preserved).toEqual(["오늘 불가"]);
+  });
+
+  it("recovers rewainted keys and drops leaked labels", () => {
+    const raw = `{
+  "rewainted": "같은 문제가 반복되면 업무를 이어가기 어렵습니다.
+재발 시 퇴사 조치
+동일한 실수 금지",
+  "preserved": ["재발 금지"]
+}`;
+    const result = validateOutput(raw);
+    expect(result.rewritten).toContain("이어가기 어렵");
+    expect(result.rewritten).not.toContain("재발 시 퇴사 조치");
+    expect(result.rewritten).not.toContain("동일한 실수 금지");
+  });
+});
+
+describe("stripLabelLeak", () => {
+  it("keeps the sendable sentence and drops trailing noun labels", () => {
+    const cleaned = stripLabelLeak(
+      "다시 같은 실수가 반복될 경우, 이는 업무 중단을 의미하며 해당 인원의 퇴사 조치로 이어질 것입니다.\n재발 시 퇴사 조치\n동일한 실수 금지",
+    );
+    expect(cleaned).toContain("반복될 경우");
+    expect(cleaned).not.toContain("동일한 실수 금지");
   });
 });
 
@@ -83,16 +115,26 @@ describe("parameter matrix uniqueness", () => {
 });
 
 describe("presets", () => {
-  it("maps 오늘은 참지 않아요 to 100/80/40", () => {
+  it("maps 오늘은 참지 않아요 to 99/80/40", () => {
     const preset = PRESETS.find((item) => item.id === "today");
-    expect(preset).toMatchObject({ directness: 100, defensiveness: 80, business: 40 });
+    expect(preset).toMatchObject({ directness: 99, defensiveness: 80, business: 40 });
+  });
+
+  it("keeps tone inside 1–99", () => {
+    for (const preset of PRESETS) {
+      expect(preset.directness).toBeGreaterThanOrEqual(TONE_MIN);
+      expect(preset.directness).toBeLessThanOrEqual(TONE_MAX);
+    }
   });
 });
 
 describe("system prompt", () => {
-  it("forbids invented concessions", () => {
+  it("forbids invented concessions and asks for human Korean", () => {
     expect(SYSTEM_PROMPT).toContain("NEVER INVENT");
     expect(SYSTEM_PROMPT).toContain("최대한 노력해보겠습니다");
     expect(SYSTEM_PROMPT).toContain("중국어");
+    expect(SYSTEM_PROMPT).toContain("HUMAN KOREAN");
+    expect(SYSTEM_PROMPT).toContain("VENT VS SENDABLE");
+    expect(SYSTEM_PROMPT).toContain('"v"');
   });
 });

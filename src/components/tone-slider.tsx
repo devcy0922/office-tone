@@ -1,6 +1,7 @@
 "use client";
 
 import { Slider } from "@/components/ui/slider";
+import { TONE_MAX, TONE_MIN } from "@/lib/ai/types";
 
 interface ToneSliderProps {
   id: string;
@@ -24,14 +25,14 @@ export function ToneSlider({ id, label, low, high, value, onChange }: ToneSlider
       </div>
       <Slider
         id={id}
-        min={0}
-        max={100}
+        min={TONE_MIN}
+        max={TONE_MAX}
         step={1}
         value={value}
         onValueChange={(next) => onChange(typeof next === "number" ? next : next[0] ?? value)}
         aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
+        aria-valuemin={TONE_MIN}
+        aria-valuemax={TONE_MAX}
         aria-valuenow={value}
         aria-valuetext={`${label} ${value}, ${value < 50 ? low : high}`}
         className="py-2"

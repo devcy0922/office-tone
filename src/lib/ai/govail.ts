@@ -43,10 +43,11 @@ export async function govailChat(messages: ChatMessage[]): Promise<GoVailChatRes
       },
       body: JSON.stringify({
         model,
-        temperature: 0.35,
-        max_tokens: 900,
+        temperature: 0.5,
+        max_tokens: 1400,
         reasoning_effort: "none",
         chat_template_kwargs: { enable_thinking: false },
+        response_format: { type: "json_object" },
         messages: toOpenAiMessages(messages),
       }),
       signal: controller.signal,

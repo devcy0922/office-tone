@@ -6,6 +6,8 @@
 
 오피스톤은 회사 메시지를 더 착하게 만드는 변환기가 아닙니다. 직장에서 하고 싶은 말은 분명한데, 어느 수위로 말해야 할지 모를 때 **직진도 · 방어도 · 비즈니스도**만 조절합니다.
 
+입력은 두 칸입니다. **무슨 일이었는지(원인/원문)** 와 **하고 싶은 말(속마음)** 을 나눠 적으면, 같은 온도로 보낼 문장 2~3개를 고를 수 있습니다.
+
 ## Public URL
 
 https://office-tone-1037271057097.asia-northeast3.run.app
@@ -28,13 +30,13 @@ AI 말투 교정기는 쉽게 사용자를 양보하게 만듭니다.
 | 방어도 | 유연하게, 함께 풀어보자 | 책임과 약속을 명확히. 없는 사실을 만들지 않음 |
 | 비즈니스도 | 사내 메신저 | 공식 메일/고객/임원. 구식 문투 금지 |
 
-세 축은 독립입니다. Preset은 템플릿이 아니라 slider 값만 바꿉니다.
+세 축은 1–99입니다. Preset은 템플릿이 아니라 slider 값만 바꿉니다.
 
 - 최대한 좋게 말해요 `20 / 30 / 65`
 - 무난하게 말해요 `50 / 50 / 60`
 - 선은 그을게요 `55 / 85 / 70`
 - 확실하게 말해요 `80 / 70 / 65`
-- 오늘은 참지 않아요 `100 / 80 / 40`
+- 오늘은 참지 않아요 `99 / 80 / 40`
 
 ## Architecture
 
@@ -74,10 +76,13 @@ pnpm dev
 
 Server route `POST /api/rewrite` calls `/v1/chat/completions`.
 
+- body: `{ situation, thought, directness, defensiveness, business, intent? }` — axes 1–99
 - model: `worker`
 - `reasoning_effort: none` (this is not a reasoning workload)
-- 1 regenerate if Chinese contamination is detected
-- JSON `{ rewritten, preserved }` with a Korean-only validator
+- `response_format: json_object`
+- 1 regenerate if Chinese contamination, empty output, or fewer than 2 candidates is detected
+- model JSON `{ v: [2–3 messages], kept }` → API `{ rewritten, candidates, preserved }`
+- 결과는 공문체/번역체가 아니라 사람이 메신저에 치는 한국어여야 한다
 
 ## Testing
 

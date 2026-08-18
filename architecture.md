@@ -9,13 +9,13 @@ flowchart TD
   GoVail["GoVail api.govail.cloud/v1"]
   Worker["worker — Qwen3.6 low-latency"]
 
-  Browser -->|"원문 + 3축 파라미터"| Next
+  Browser -->|"상황 + 속마음 + 3축 1–99"| Next
   Next --> Rewrite
   Rewrite --> GoVail
   GoVail --> Worker
   Worker --> Validator
-  Validator -->|"1회 regenerate on CJK contamination"| GoVail
-  Validator -->|"rewritten + preservedPoints"| Browser
+  Validator -->|"1회 regenerate on CJK / empty / 후보 부족"| GoVail
+  Validator -->|"candidates 2–3 + preserved"| Browser
 ```
 
 ## Runtime
@@ -30,11 +30,17 @@ flowchart TD
 
 ## Request path
 
-1. Client sends `{ text, directness, defensiveness, business, intent? }`.
-2. Server never forwards user text into the system prompt. User text is the `user` message only.
+1. Client sends `{ situation, thought, directness, defensiveness, business, intent? }`. Axes are 1–99.
+2. `situation` is the cause/original context. `thought` is what the user wants to say. Server never forwards either into the system prompt; they are the `user` message only.
 3. Prompt SSOT: `src/lib/ai/prompts.ts`.
-4. Validator checks empty, length, repetition, JSON, Chinese contamination. One regenerate max.
+4. Model returns JSON `{ v: [2–3 sendable messages], kept: [...] }`. Validator accepts mangled keys and strips leaked label lines. One regenerate max.
 5. Response logs request id, latency, status, model, tokens, validation, retry — never raw text.
+
+## Calibration rules
+
+- Results must read like a Korean coworker, not a translated memo.
+- Extreme venting is intensity, not a sendable ultimatum. Low directness restates the underlying workplace demand.
+- Do not invent deadlines, reports, apologies, or disciplinary power the user did not state.
 
 ## Privacy
 

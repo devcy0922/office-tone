@@ -20,7 +20,7 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
   const baseMessages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "developer", content: buildDeveloperPrompt(input) },
-    { role: "user", content: buildUserPrompt(input.text) },
+    { role: "user", content: buildUserPrompt(input.situation, input.thought) },
   ];
 
   let retryCount = 0;
@@ -70,6 +70,7 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
 
   return {
     rewritten: validation.rewritten,
+    candidates: validation.candidates.length ? validation.candidates : [validation.rewritten],
     preserved: validation.preserved,
     requestId,
     model: lastModel,

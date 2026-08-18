@@ -8,7 +8,8 @@ export const QUICK_INTENTS = ["거절", "재촉", "반박", "일정"] as const;
 export type QuickIntent = (typeof QUICK_INTENTS)[number];
 
 export interface RewriteInput {
-  text: string;
+  situation: string;
+  thought: string;
   directness: number;
   defensiveness: number;
   business: number;
@@ -17,6 +18,7 @@ export interface RewriteInput {
 
 export interface RewriteOutput {
   rewritten: string;
+  candidates: string[];
   preserved: string[];
   requestId: string;
   model: string;
@@ -46,12 +48,15 @@ export type ValidationIssue =
 export interface ValidationResult {
   ok: boolean;
   rewritten: string;
+  candidates: string[];
   preserved: string[];
   issues: ValidationIssue[];
   shouldRegenerate: boolean;
 }
 
-export const TONE_MIN = 0;
-export const TONE_MAX = 100;
+export const TONE_MIN = 1;
+export const TONE_MAX = 99;
 export const MAX_INPUT_CHARS = 4000;
 export const MAX_OUTPUT_CHARS = 2500;
+export const MIN_CANDIDATES = 2;
+export const MAX_CANDIDATES = 3;

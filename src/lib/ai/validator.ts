@@ -1,11 +1,23 @@
 import type { ValidationIssue, ValidationResult } from "@/lib/ai/types";
-import { MAX_OUTPUT_CHARS } from "@/lib/ai/types";
+import { MAX_CANDIDATES, MAX_OUTPUT_CHARS, MIN_CANDIDATES } from "@/lib/ai/types";
 
 const CHINESE_PHRASES = /确认|请求|进行|问题|处理|请您|谢谢|的了|这是|我们|吗[？?]/u;
 const CHINESE_PARTICLES = /[的这们嗎這們]/u;
 
 const CJK = /[\u4E00-\u9FFF]/u;
 const HANGUL = /[\uAC00-\uD7A3]/u;
+const SENTENCE_END = /(?:다|요|까|죠|네|음|니다|세요|[.!?…])\s*$/u;
+const MANGLED_KEYS = [
+  "rewritten",
+  "rewainted",
+  "rewined",
+  "rewned",
+  "rewriteed",
+  "rewrite",
+  "calibrated",
+  "message",
+  "text",
+];
 
 export function extractJsonObject(raw: string): unknown | null {
   const trimmed = raw.trim();
@@ -97,64 +109,41 @@ export function hasRepetition(text: string): boolean {
   return false;
 }
 
-function asStringArray(value: unknown): string[] {
+function asStringArray(value: unknown, limit = MAX_CANDIDATES): string[] {
   if (!Array.isArray(value)) return [];
-  return value
+  const mapped = value
     .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 6);
+    .map((item) => (limit === MAX_CANDIDATES ? cleanCandidate(item) : item.trim()))
+    .filter(Boolean);
+  return mapped.slice(0, limit);
 }
 
-function pickRewritten(parsed: Record<string, unknown>): string {
-  for (const key of ["rewritten", "rewined", "rewrite", "calibrated", "message", "text"]) {
-    const value = parsed[key];
-    if (typeof value === "string" && value.trim() && !value.trim().startsWith("{")) {
-      return value.trim();
-    }
-  }
-  return "";
+function looksLikeMessage(value: string): boolean {
+  const text = value.trim();
+  if (!text || text.startsWith("{")) return false;
+  return /[\uAC00-\uD7A3\u4E00-\u9FFF]/.test(text);
 }
 
-export function parseModelOutput(raw: string): { rewritten: string; preserved: string[]; jsonOk: boolean } {
-  const parsed = extractJsonObject(raw);
-  if (parsed && typeof parsed === "object" && parsed !== null) {
-    const record = parsed as Record<string, unknown>;
-    const rewritten = stripJsonKeyPrefix(pickRewritten(record));
-    const preserved = asStringArray(record.preserved);
-    if (rewritten) return { rewritten, preserved, jsonOk: true };
-  }
+export function stripLabelLeak(text: string): string {
+  const lines = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) return text.trim();
 
-  const loose = extractRewrittenLoose(raw);
-  if (loose) {
-    return { rewritten: loose, preserved: extractPreservedLoose(raw), jsonOk: false };
-  }
-
-  const fallback = koreanParagraphs(raw);
-  if (fallback) return { rewritten: fallback, preserved: [], jsonOk: false };
-
-  return { rewritten: "", preserved: [], jsonOk: false };
-}
-
-function extractRewrittenLoose(raw: string): string {
-  for (const key of ["rewritten", "rewined"]) {
-    const match = raw.match(new RegExp(`"${key}"\\s*:\\s*"([\\s\\S]*)`));
-    if (!match) continue;
-    const rest = match[1];
-    const endPreserved = rest.search(/"\s*,\s*"preserved"/i);
-    const endBrace = rest.search(/"\s*}/);
-    const end = [endPreserved, endBrace].filter((value) => value >= 0).sort((a, b) => a - b)[0];
-    if (end === undefined) continue;
-    const value = stripJsonKeyPrefix(rest.slice(0, end).replace(/\\n/g, "\n").replace(/\\"/g, '"').trim());
-    if (value && !value.startsWith("{")) return value;
-  }
-  return "";
+  const kept = lines.filter((line, index) => {
+    if (index === 0) return true;
+    if (/^(?:[-*]|\d+[.)])\s/.test(line)) return false;
+    const shortLabel = line.length <= 18 && !SENTENCE_END.test(line) && !/[.!?…]/.test(line);
+    return !shortLabel;
+  });
+  return kept.join("\n").trim();
 }
 
 function stripJsonKeyPrefix(value: string): string {
   let text = value.trim();
   for (let i = 0; i < 3; i += 1) {
-    const next = text.replace(/^(rewritten|rewined|rewned|rewrite)\\?"?\s*:\s*\\?"?/i, "").trim();
+    const next = text.replace(/^(rewritten|rewainted|rewined|rewned|rewriteed|rewrite)\\?"?\s*:\s*\\?"?/i, "").trim();
     if (next === text) break;
     text = next;
   }
@@ -163,45 +152,163 @@ function stripJsonKeyPrefix(value: string): string {
   return text.replace(/^"+|"+$/g, "").trim();
 }
 
+export function cleanCandidate(value: string): string {
+  return stripLabelLeak(stripJsonKeyPrefix(value)).slice(0, MAX_OUTPUT_CHARS);
+}
+
+function pickSingle(parsed: Record<string, unknown>): string {
+  for (const key of MANGLED_KEYS) {
+    const value = parsed[key];
+    if (typeof value === "string" && looksLikeMessage(value)) {
+      return cleanCandidate(value);
+    }
+  }
+  return "";
+}
+
+function pickCandidates(parsed: Record<string, unknown>): string[] {
+  for (const key of ["v", "candidates", "variants", "options", "messages"]) {
+    const values = asStringArray(parsed[key]).filter(looksLikeMessage);
+    if (values.length) return uniqueCandidates(values);
+  }
+
+  const abc = ["a", "b", "c"]
+    .map((key) => parsed[key])
+    .filter((item): item is string => typeof item === "string")
+    .map(cleanCandidate)
+    .filter(looksLikeMessage);
+  if (abc.length >= MIN_CANDIDATES) return uniqueCandidates(abc);
+
+  const single = pickSingle(parsed);
+  return single ? [single] : [];
+}
+
+function uniqueCandidates(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const key = value.replace(/\s+/g, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+    if (out.length >= MAX_CANDIDATES) break;
+  }
+  return out;
+}
+
+export function parseModelOutput(raw: string): { candidates: string[]; preserved: string[]; jsonOk: boolean } {
+  const parsed = extractJsonObject(raw);
+  if (parsed && typeof parsed === "object" && parsed !== null) {
+    const record = parsed as Record<string, unknown>;
+    const candidates = pickCandidates(record);
+    const preserved = asStringArray(record.kept ?? record.preserved, 6);
+    if (candidates.length) return { candidates, preserved, jsonOk: true };
+  }
+
+  const loose = extractCandidatesLoose(raw);
+  if (loose.length) {
+    return { candidates: loose, preserved: extractPreservedLoose(raw), jsonOk: false };
+  }
+
+  const fallback = koreanParagraphs(raw);
+  if (fallback) return { candidates: [fallback], preserved: [], jsonOk: false };
+
+  return { candidates: [], preserved: [], jsonOk: false };
+}
+
+function extractQuotedKoreanStrings(raw: string): string[] {
+  const values: string[] = [];
+  const pattern = /"((?:\\.|[^"\\])*)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(raw))) {
+    const value = cleanCandidate(match[1].replace(/\\n/g, "\n").replace(/\\"/g, '"'));
+    if (value.length >= 8 && looksLikeMessage(value) && !/^(v|kept|preserved|rewritten)$/i.test(value)) {
+      values.push(value);
+    }
+  }
+  return uniqueCandidates(values);
+}
+
+function extractCandidatesLoose(raw: string): string[] {
+  const arrayMatch = raw.match(/"(?:v|candidates|variants)"\s*:\s*(\[[\s\S]*?\])/i);
+  if (arrayMatch) {
+    try {
+      const parsed = JSON.parse(escapeControlsInJsonStrings(arrayMatch[1]));
+      const values = asStringArray(parsed).filter(looksLikeMessage);
+      if (values.length) return uniqueCandidates(values);
+    } catch {
+      const quoted = extractQuotedKoreanStrings(arrayMatch[1]);
+      if (quoted.length) return quoted;
+    }
+  }
+
+  for (const key of MANGLED_KEYS) {
+    const match = raw.match(new RegExp(`"${key}"\\s*:\\s*"([\\s\\S]*)`));
+    if (!match) continue;
+    const rest = match[1];
+    const endMeta = rest.search(/"\s*,\s*"(preserved|kept|v)"/i);
+    const endBrace = rest.search(/"\s*}/);
+    const end = [endMeta, endBrace].filter((value) => value >= 0).sort((a, b) => a - b)[0];
+    if (end === undefined) continue;
+    const value = cleanCandidate(rest.slice(0, end).replace(/\\n/g, "\n").replace(/\\"/g, '"'));
+    if (looksLikeMessage(value)) return [value];
+  }
+
+  return extractQuotedKoreanStrings(raw).slice(0, MAX_CANDIDATES);
+}
+
 function extractPreservedLoose(raw: string): string[] {
-  const match = raw.match(/"preserved"\s*:\s*(\[[\s\S]*?\])/);
+  const match = raw.match(/"(?:kept|preserved)"\s*:\s*(\[[\s\S]*?\])/);
   if (!match) return [];
   try {
-    return asStringArray(JSON.parse(escapeControlsInJsonStrings(match[1])));
+    return asStringArray(JSON.parse(escapeControlsInJsonStrings(match[1])), 6);
   } catch {
     return [];
   }
 }
 
 function koreanParagraphs(raw: string): string {
-  return raw
-    .split(/\n+/)
-    .map((line) => line.replace(/^[\s`"'{\[\],:]+|[`"{\[\],]+\s*$/g, "").trim())
-    .filter((line) => /[\uAC00-\uD7A3]/.test(line) && line.length >= 8 && !/preserved|rewritten/i.test(line))
-    .join("\n")
-    .trim();
+  return stripLabelLeak(
+    raw
+      .split(/\n+/)
+      .map((line) => line.replace(/^[\s`"'{\[\],:]+|[`"{\[\],]+\s*$/g, "").trim())
+      .filter((line) => /[\uAC00-\uD7A3]/.test(line) && line.length >= 8 && !/preserved|rewritten|^kept$/i.test(line))
+      .join("\n"),
+  );
 }
 
 export function validateOutput(raw: string): ValidationResult {
   const issues: ValidationIssue[] = [];
   const parsed = parseModelOutput(raw);
+  const candidates = parsed.candidates
+    .map(cleanCandidate)
+    .filter((text) => text && !hasRepetition(text))
+    .slice(0, MAX_CANDIDATES);
+  const rewritten = (candidates[0] ?? "").trim();
 
   if (!parsed.jsonOk) issues.push("json_parse");
-
-  const rewritten = parsed.rewritten.trim();
   if (!rewritten) issues.push("empty");
-  if (rewritten.length > MAX_OUTPUT_CHARS) issues.push("too_long");
-  if (hasChineseContamination(rewritten) || parsed.preserved.some(hasChineseContamination)) {
+  if (candidates.some((text) => text.length > MAX_OUTPUT_CHARS)) issues.push("too_long");
+  if (
+    candidates.some(hasChineseContamination) ||
+    parsed.preserved.some(hasChineseContamination)
+  ) {
     issues.push("chinese");
   }
-  if (hasRepetition(rewritten)) issues.push("repetition");
+  if (parsed.candidates.some(hasRepetition) && !candidates.length) issues.push("repetition");
 
   const fatalEmpty = issues.includes("empty");
-  const shouldRegenerate = issues.includes("chinese") || fatalEmpty;
+  const shouldRegenerate =
+    issues.includes("chinese") || fatalEmpty || candidates.length < MIN_CANDIDATES;
 
   return {
-    ok: !fatalEmpty && !issues.includes("chinese") && !issues.includes("too_long") && !issues.includes("repetition"),
+    ok:
+      !fatalEmpty &&
+      !issues.includes("chinese") &&
+      !issues.includes("too_long") &&
+      !issues.includes("repetition"),
     rewritten: rewritten.slice(0, MAX_OUTPUT_CHARS),
+    candidates,
     preserved: parsed.preserved,
     issues,
     shouldRegenerate,

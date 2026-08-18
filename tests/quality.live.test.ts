@@ -33,7 +33,8 @@ describe.skipIf(!enabled)("live GoVail quality", () => {
       const cases = [FIXTURES.hardNo, FIXTURES.notDev, FIXTURES.refusal, FIXTURES.boundary, FIXTURES.golden];
       for (const fixture of cases) {
         const result = await rewriteMessage({
-          text: fixture.text,
+          situation: "",
+          thought: fixture.text,
           directness: 80,
           defensiveness: 85,
           business: 70,
@@ -52,7 +53,8 @@ describe.skipIf(!enabled)("live GoVail quality", () => {
       const samples = [];
       for (const [directness, defensiveness, business] of PARAMETER_MATRIX) {
         const result = await rewriteMessage({
-          text: FIXTURES.golden.text,
+          situation: "",
+          thought: FIXTURES.golden.text,
           directness,
           defensiveness,
           business,

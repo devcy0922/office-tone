@@ -14,16 +14,24 @@ function clampTone(value: unknown): number | null {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return null;
   const rounded = Math.round(n);
-  if (rounded < TONE_MIN || rounded > TONE_MAX) return null;
+  if (rounded < TONE_MIN) return TONE_MIN;
+  if (rounded > TONE_MAX) return TONE_MAX;
   return rounded;
+}
+
+function asText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function parseBody(body: unknown): RewriteInput | { error: string } {
   if (!body || typeof body !== "object") return { error: copy.empty };
   const data = body as Record<string, unknown>;
-  const text = typeof data.text === "string" ? data.text.trim() : "";
-  if (!text) return { error: copy.empty };
-  if (text.length > MAX_INPUT_CHARS) return { error: "메시지가 너무 길어요. 조금 줄여주세요." };
+  const situation = asText(data.situation);
+  const thought = asText(data.thought) || asText(data.text);
+  if (!situation && !thought) return { error: copy.empty };
+  if (situation.length + thought.length > MAX_INPUT_CHARS) {
+    return { error: "메시지가 너무 길어요. 조금 줄여주세요." };
+  }
 
   const directness = clampTone(data.directness);
   const defensiveness = clampTone(data.defensiveness);
@@ -40,7 +48,7 @@ function parseBody(body: unknown): RewriteInput | { error: string } {
     intent = data.intent as QuickIntent;
   }
 
-  return { text, directness, defensiveness, business, intent };
+  return { situation, thought, directness, defensiveness, business, intent };
 }
 
 export async function POST(request: Request) {
