@@ -26,10 +26,10 @@ function asText(value: unknown): string {
 function parseBody(body: unknown): RewriteInput | { error: string } {
   if (!body || typeof body !== "object") return { error: copy.empty };
   const data = body as Record<string, unknown>;
-  const situation = asText(data.situation);
-  const thought = asText(data.thought) || asText(data.text);
-  if (!situation && !thought) return { error: copy.empty };
-  if (situation.length + thought.length > MAX_INPUT_CHARS) {
+  const context = asText(data.context) || asText(data.situation);
+  const rawReply = asText(data.rawReply) || asText(data.thought) || asText(data.text);
+  if (!rawReply) return { error: copy.empty };
+  if (context.length + rawReply.length > MAX_INPUT_CHARS) {
     return { error: "메시지가 너무 길어요. 조금 줄여주세요." };
   }
 
@@ -48,7 +48,7 @@ function parseBody(body: unknown): RewriteInput | { error: string } {
     intent = data.intent as QuickIntent;
   }
 
-  return { situation, thought, directness, defensiveness, business, intent };
+  return { context, rawReply, directness, defensiveness, business, intent };
 }
 
 export async function POST(request: Request) {

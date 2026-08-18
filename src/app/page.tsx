@@ -3,8 +3,8 @@ import { copy as ui } from "@/lib/copy";
 
 export default function Home() {
   return (
-    <div className="mx-auto w-full max-w-6xl px-5 pb-28 pt-8 md:pt-12 lg:pb-16">
-      <header className="mb-8 max-w-2xl space-y-3">
+    <div className="mx-auto w-full max-w-xl px-5 pb-28 pt-8 md:pt-12 lg:pb-16">
+      <header className="mb-8 space-y-3">
         <p className="text-sm font-semibold tracking-[0.18em] text-orange-800/80">{ui.brand}</p>
         <h1 className="whitespace-pre-line text-[30px] font-semibold leading-[1.25] tracking-tight text-stone-900 md:text-4xl">
           {ui.headline}

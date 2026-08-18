@@ -30,7 +30,7 @@ export function ResultPanel({
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-orange-800/80">{ui.resultTitle}</p>
-          <p className="mt-1 text-xs text-stone-500">{ui.resultHint}</p>
+          {candidates.length > 1 ? <p className="mt-1 text-xs text-stone-500">{ui.resultHint}</p> : null}
         </div>
         <Button type="button" variant="outline" size="sm" className="h-9 rounded-full px-3.5" onClick={onRetry}>
           {ui.retry}

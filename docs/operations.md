@@ -45,15 +45,17 @@ Expect `{ ok: true, service: "office-tone", provider: "govail", ... }`.
 
 ```json
 {
-  "situation": "같은 실수가 또 나왔어요.",
-  "thought": "오늘은 못 합니다. 요구사항이 바뀌었습니다.",
-  "directness": 50,
-  "defensiveness": 50,
-  "business": 60
+  "context": "DB 컬럼 미스 내일까지 보고 작성하세요.",
+  "rawReply": "개새끼야 니가 만든 거야 씨발새끼야",
+  "directness": 80,
+  "defensiveness": 90,
+  "business": 70
 }
 ```
 
 Response includes `candidates` (2–3 sendable Korean messages) and `preserved`. Axes are 1–99. Application logs include request id, latency, status, model, token usage, validation, retry count. Raw user text and generated message bodies are not logged.
+
+`context` is the counterpart's message. `rawReply` is what the user wants to say back. Do not treat context as the rewrite target. `situation`/`thought` aliases are accepted.
 
 ## Health
 

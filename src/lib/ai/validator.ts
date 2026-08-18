@@ -1,3 +1,4 @@
+import { looksLikeRoleReversal } from "@/lib/ai/semantics";
 import type { ValidationIssue, ValidationResult } from "@/lib/ai/types";
 import { MAX_CANDIDATES, MAX_OUTPUT_CHARS, MIN_CANDIDATES } from "@/lib/ai/types";
 
@@ -277,13 +278,27 @@ function koreanParagraphs(raw: string): string {
   );
 }
 
-export function validateOutput(raw: string): ValidationResult {
+export function validateOutput(
+  raw: string,
+  input?: { context?: string; rawReply?: string },
+): ValidationResult {
   const issues: ValidationIssue[] = [];
   const parsed = parseModelOutput(raw);
-  const candidates = parsed.candidates
+  let candidates = parsed.candidates
     .map(cleanCandidate)
     .filter((text) => text && !hasRepetition(text))
     .slice(0, MAX_CANDIDATES);
+
+  const context = input?.context ?? "";
+  const rawReply = input?.rawReply ?? "";
+  const reversed = candidates.filter((text) => looksLikeRoleReversal(context, rawReply, text));
+  const kept = candidates.filter((text) => !looksLikeRoleReversal(context, rawReply, text));
+  if (reversed.length && kept.length) {
+    candidates = kept;
+  } else if (reversed.length && !kept.length) {
+    issues.push("role_reversal");
+  }
+
   const rewritten = (candidates[0] ?? "").trim();
 
   if (!parsed.jsonOk) issues.push("json_parse");
@@ -298,15 +313,20 @@ export function validateOutput(raw: string): ValidationResult {
   if (parsed.candidates.some(hasRepetition) && !candidates.length) issues.push("repetition");
 
   const fatalEmpty = issues.includes("empty");
+  const droppedReversal = reversed.length > 0 && kept.length > 0;
   const shouldRegenerate =
-    issues.includes("chinese") || fatalEmpty || candidates.length < MIN_CANDIDATES;
+    issues.includes("chinese") ||
+    fatalEmpty ||
+    (candidates.length < MIN_CANDIDATES && !droppedReversal) ||
+    issues.includes("role_reversal");
 
   return {
     ok:
       !fatalEmpty &&
       !issues.includes("chinese") &&
       !issues.includes("too_long") &&
-      !issues.includes("repetition"),
+      !issues.includes("repetition") &&
+      !issues.includes("role_reversal"),
     rewritten: rewritten.slice(0, MAX_OUTPUT_CHARS),
     candidates,
     preserved: parsed.preserved,

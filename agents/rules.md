@@ -20,7 +20,9 @@ Do not serve vLLM on this Mac mini. Do not invent new GCP projects.
 - AI must not make the user kinder, more agreeable, or more available than the original text.
 - Never invent apology, concession, promise, schedule, or responsibility.
 - Three axes (`directness`, `defensiveness`, `business`) are independent 1–99 parameters.
-- First screen is the product: situation + thought, then 2–3 sendable candidates. No signup, no `/app`, no chatbot bubbles.
+- First screen is the product: raw reply first, optional counterpart context, then sendable candidates. No signup, no `/app`, no chatbot bubbles.
+- Context is evidence, not the rewrite target. Never reverse requester and responder.
+- Low business stays close to the raw reply. High business keeps the same speech act in a more official register.
 - Results must read like a Korean coworker. Do not invent apology, deadline, report, or disciplinary power.
 - No DB. No login. Do not log raw user text or generated message body.
 

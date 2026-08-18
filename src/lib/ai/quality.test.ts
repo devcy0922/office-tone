@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateIntentPreservation, evaluateParameterShift } from "@/lib/ai/quality";
+import { evaluateBusinessShift, evaluateIntentPreservation, evaluateParameterShift, evaluateReplySemantics } from "@/lib/ai/quality";
+import { looksLikeRoleReversal } from "@/lib/ai/semantics";
 import { extractJsonObject, hasChineseContamination, stripLabelLeak, validateOutput } from "@/lib/ai/validator";
 import { PRESETS } from "@/lib/presets";
 import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { TONE_MAX, TONE_MIN } from "@/lib/ai/types";
+import { summarizeTone } from "@/lib/tone-summary";
 
 describe("validator", () => {
   it("parses fenced JSON", () => {
@@ -136,5 +138,78 @@ describe("system prompt", () => {
     expect(SYSTEM_PROMPT).toContain("HUMAN KOREAN");
     expect(SYSTEM_PROMPT).toContain("VENT VS SENDABLE");
     expect(SYSTEM_PROMPT).toContain('"v"');
+    expect(SYSTEM_PROMPT).toContain("SPEAKER ROLES");
+    expect(SYSTEM_PROMPT).toContain("<raw_reply>");
+    expect(SYSTEM_PROMPT).toContain("화자 역할 오류");
+    expect(SYSTEM_PROMPT).toContain("TONE MUST BE AUDIBLE");
+  });
+});
+
+describe("role reversal", () => {
+  const context = "DB 컬럼 미스 내일까지 보고 작성하세요.";
+  const rawReply = "개새끼야 니가 만든 거야 씨발새끼야";
+
+  it("flags rewriting the counterpart request as the user request", () => {
+    const reversed = "내일까지 DB 컬럼 미스 건에 대해 보고 작성 부탁드립니다.";
+    expect(looksLikeRoleReversal(context, rawReply, reversed)).toBe(true);
+    const verdict = evaluateReplySemantics(context, rawReply, reversed);
+    expect(verdict.pass).toBe(false);
+  });
+
+  it("passes a user reply that keeps blame denial", () => {
+    const ok =
+      "해당 DB 컬럼 변경은 제가 진행한 작업이 아닌 것으로 알고 있습니다. 제가 보고서를 작성해야 하는 건지 먼저 책임 범위를 확인했으면 합니다.";
+    expect(looksLikeRoleReversal(context, rawReply, ok)).toBe(false);
+    const verdict = evaluateReplySemantics(context, rawReply, ok);
+    expect(verdict.pass).toBe(true);
+  });
+
+  it("fails soft acceptance of a refused deadline", () => {
+    const verdict = evaluateReplySemantics(
+      "오늘 퇴근 전까지 완료해주세요.",
+      "오늘 절대 못 해 이미 다른 일정 있다고 했잖아",
+      "최대한 오늘까지 해보겠습니다.",
+    );
+    expect(verdict.pass).toBe(false);
+  });
+
+  it("drops reversed candidates when a valid one exists", () => {
+    const raw = JSON.stringify({
+      v: [
+        "내일까지 DB 컬럼 미스 건에 대해 보고 작성 부탁드립니다.",
+        "해당 DB 컬럼 변경은 제가 진행한 작업이 아닙니다. 보고 책임부터 확인해 주세요.",
+      ],
+      kept: ["책임 부인"],
+    });
+    const result = validateOutput(raw, { context, rawReply });
+    expect(result.ok).toBe(true);
+    expect(result.shouldRegenerate).toBe(false);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.rewritten).toContain("제가 진행한 작업이 아닙니다");
+  });
+});
+
+describe("business shift", () => {
+  it("requires high business to be more formal", () => {
+    const verdict = evaluateBusinessShift(
+      "그거 제가 만든 거 아니에요. 왜 제가 보고를 써야 하죠?",
+      "해당 컬럼 변경은 제가 진행한 작업이 아닙니다. 보고 책임 범위부터 확인해 주시기 바랍니다.",
+    );
+    expect(verdict.pass).toBe(true);
+  });
+
+  it("fails identical business outputs", () => {
+    const same = "해당 건 확인 부탁드립니다.";
+    expect(evaluateBusinessShift(same, same).pass).toBe(false);
+  });
+});
+
+describe("tone summary", () => {
+  it("explains low business as staying close to the raw reply", () => {
+    expect(summarizeTone({ directness: 70, defensiveness: 80, business: 20 })).toContain("편한 말");
+  });
+
+  it("explains high defensiveness with courtesy", () => {
+    expect(summarizeTone({ directness: 40, defensiveness: 80, business: 70 })).toContain("책임 범위");
   });
 });

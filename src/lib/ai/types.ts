@@ -8,8 +8,8 @@ export const QUICK_INTENTS = ["거절", "재촉", "반박", "일정"] as const;
 export type QuickIntent = (typeof QUICK_INTENTS)[number];
 
 export interface RewriteInput {
-  situation: string;
-  thought: string;
+  context: string;
+  rawReply: string;
   directness: number;
   defensiveness: number;
   business: number;
@@ -43,7 +43,8 @@ export type ValidationIssue =
   | "too_long"
   | "json_parse"
   | "chinese"
-  | "repetition";
+  | "repetition"
+  | "role_reversal";
 
 export interface ValidationResult {
   ok: boolean;

@@ -6,7 +6,7 @@
 
 오피스톤은 회사 메시지를 더 착하게 만드는 변환기가 아닙니다. 직장에서 하고 싶은 말은 분명한데, 어느 수위로 말해야 할지 모를 때 **직진도 · 방어도 · 비즈니스도**만 조절합니다.
 
-입력은 두 칸입니다. **무슨 일이었는지(원인/원문)** 와 **하고 싶은 말(속마음)** 을 나눠 적으면, 같은 온도로 보낼 문장 2~3개를 고를 수 있습니다.
+입력은 **내가 하고 싶은 말(raw reply)** 이 기본입니다. 필요하면 **상대가 한 말이나 상황(context)** 을 추가합니다. context는 근거일 뿐, 예쁘게 다시 쓰는 대상이 아닙니다.
 
 ## Public URL
 
@@ -76,7 +76,7 @@ pnpm dev
 
 Server route `POST /api/rewrite` calls `/v1/chat/completions`.
 
-- body: `{ situation, thought, directness, defensiveness, business, intent? }` — axes 1–99
+- body: `{ rawReply, context?, directness, defensiveness, business, intent? }` — axes 1–99. `thought`/`situation` aliases still work.
 - model: `worker`
 - `reasoning_effort: none` (this is not a reasoning workload)
 - `response_format: json_object`
@@ -90,9 +90,10 @@ Server route `POST /api/rewrite` calls `/v1/chat/completions`.
 pnpm test
 pnpm test:quality   # needs GOVAIL_API_KEY
 pnpm test:e2e
+E2E_LIVE=1 E2E_BASE_URL=https://office-tone-1037271057097.asia-northeast3.run.app pnpm test:e2e:live
 ```
 
-Fixture types: 거절, 책임 경계, 재촉, 반박, 상사, 고객. Parameter matrix is in `src/lib/ai/quality.ts`.
+Fixture types: 거절, 책임 경계, 재촉, 반박, 상사, 고객, role reversal. Parameter matrix is in `src/lib/ai/quality.ts`.
 
 ## Deployment
 

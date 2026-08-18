@@ -1,5 +1,11 @@
 import { govailChat, type ChatMessage } from "@/lib/ai/govail";
-import { buildDeveloperPrompt, buildUserPrompt, koreanRetryHint, SYSTEM_PROMPT } from "@/lib/ai/prompts";
+import {
+  buildDeveloperPrompt,
+  buildUserPrompt,
+  koreanRetryHint,
+  roleReversalRetryHint,
+  SYSTEM_PROMPT,
+} from "@/lib/ai/prompts";
 import type { RewriteInput, RewriteOutput } from "@/lib/ai/types";
 import { validateOutput } from "@/lib/ai/validator";
 
@@ -20,7 +26,7 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
   const baseMessages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "developer", content: buildDeveloperPrompt(input) },
-    { role: "user", content: buildUserPrompt(input.situation, input.thought) },
+    { role: "user", content: buildUserPrompt(input.context, input.rawReply) },
   ];
 
   let retryCount = 0;
@@ -29,24 +35,27 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
   let result = await govailChat(baseMessages);
   lastModel = result.model;
   lastUsage = result.usage;
-  let validation = validateOutput(result.content);
+  let validation = validateOutput(result.content, input);
 
   if (validation.shouldRegenerate) {
     retryCount = 1;
-    result = await govailChat([
-      ...baseMessages,
-      { role: "user", content: koreanRetryHint() },
-    ]);
+    const hint = validation.issues.includes("role_reversal") ? roleReversalRetryHint() : koreanRetryHint();
+    result = await govailChat([...baseMessages, { role: "user", content: hint }]);
     lastModel = result.model;
     lastUsage = result.usage;
-    validation = validateOutput(result.content);
+    validation = validateOutput(result.content, input);
   }
 
   if (!validation.ok && validation.rewritten) {
-    const hangul = validation.rewritten.match(/[\uAC00-\uD7A3]/gu)?.length ?? 0;
-    const cjk = validation.rewritten.match(/[\u4E00-\u9FFF]/gu)?.length ?? 0;
-    if (hangul >= 12 && hangul > cjk * 4) {
-      validation = { ...validation, ok: true };
+    const blocking = validation.issues.filter((issue) =>
+      ["chinese", "role_reversal", "empty", "too_long", "repetition"].includes(issue),
+    );
+    if (!blocking.length) {
+      const hangul = validation.rewritten.match(/[\uAC00-\uD7A3]/gu)?.length ?? 0;
+      const cjk = validation.rewritten.match(/[\u4E00-\u9FFF]/gu)?.length ?? 0;
+      if (hangul >= 12 && hangul > cjk * 4) {
+        validation = { ...validation, ok: true };
+      }
     }
   }
 
