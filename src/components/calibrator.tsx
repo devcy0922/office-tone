@@ -8,17 +8,33 @@ import { ResultPanel } from "@/components/result-panel";
 import { ToneSlider } from "@/components/tone-slider";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import type { CommunicationMeta, Refinement, ToneParameters } from "@/lib/ai/types";
+import type {
+  CommunicationMeta,
+  EndingStyleId,
+  Refinement,
+  ResolvedEndingStyleId,
+  RewriteModeResults,
+  ToneParameters,
+} from "@/lib/ai/types";
+import {
+  DEFAULT_ENDING_STYLE,
+  DEFAULT_TEMPERATURE,
+  ENDING_STYLES,
+} from "@/lib/ai/generation-contracts";
 import { copy as ui } from "@/lib/copy";
 import { DEFAULT_TONE } from "@/lib/presets";
 import { summarizeTone } from "@/lib/tone-summary";
+import { cn } from "@/lib/utils";
 
 interface RewriteResponse {
   rewritten: string;
   candidates?: string[];
+  results?: RewriteModeResults;
   preserved: string[];
   requestId: string;
   meta?: CommunicationMeta;
+  endingStyle?: ResolvedEndingStyleId;
+  temperatureBand?: string;
 }
 
 export function Calibrator() {
@@ -27,6 +43,8 @@ export function Calibrator() {
   const [showContext, setShowContext] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [tone, setTone] = useState<ToneParameters>(DEFAULT_TONE);
+  const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE);
+  const [endingStyle, setEndingStyle] = useState<EndingStyleId>(DEFAULT_ENDING_STYLE);
   const [result, setResult] = useState<RewriteResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,6 +70,8 @@ export function Calibrator() {
           rawReply: rawReply.trim(),
           context: context.trim(),
           ...tone,
+          temperature,
+          endingStyle,
           refinement,
         }),
       });
@@ -102,7 +122,14 @@ export function Calibrator() {
           <h2 className="text-[16px] font-semibold text-stone-900">{ui.temperature}</h2>
           <p className="mt-1 text-sm text-stone-500">{ui.support}</p>
         </div>
-        <PresetRow value={tone} onChange={setTone} />
+        <PresetRow
+          value={tone}
+          temperature={temperature}
+          onChange={(nextTone, nextTemperature) => {
+            setTone(nextTone);
+            setTemperature(nextTemperature);
+          }}
+        />
 
         <button type="button" onClick={() => setShowAdvanced((v) => !v)} className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-800" aria-expanded={showAdvanced}>
           {ui.advanced}<ChevronDown className={`size-4 transition ${showAdvanced ? "rotate-180" : ""}`} />
@@ -114,6 +141,37 @@ export function Calibrator() {
             <ToneSlider id="defensiveness" label={ui.defensiveness} low={ui.defensivenessLow} high={ui.defensivenessHigh} value={tone.defensiveness} onChange={(defensiveness) => setTone((prev) => ({ ...prev, defensiveness }))} />
             <ToneSlider id="business" label={ui.business} low={ui.businessLow} high={ui.businessHigh} value={tone.business} onChange={(business) => setTone((prev) => ({ ...prev, business }))} />
             <p className="text-sm leading-6 text-stone-600" data-testid="tone-summary">{toneLine}</p>
+
+            <div className="border-t border-stone-100 pt-4">
+              <div className="mb-3">
+                <p className="text-[15px] font-medium text-stone-800">말끝</p>
+                <p className="mt-1 text-xs leading-5 text-stone-500">종결어미만 바꾸지 않고, 어휘와 리듬까지 이 스타일로 다시 만들어요.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {ENDING_STYLES.map((style) => {
+                  const active = endingStyle === style.id;
+                  return (
+                    <button
+                      key={style.id}
+                      type="button"
+                      aria-pressed={active}
+                      className={cn(
+                        "rounded-2xl border px-3 py-2.5 text-left transition",
+                        active
+                          ? "border-stone-900 bg-stone-900 text-white"
+                          : "border-stone-200 bg-white text-stone-700 hover:border-stone-400",
+                      )}
+                      onClick={() => setEndingStyle(style.id)}
+                    >
+                      <span className="block text-sm font-semibold">{style.label}</span>
+                      <span className={cn("mt-0.5 block text-[11px] leading-4", active ? "text-stone-300" : "text-stone-500")}>
+                        {style.usage}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         ) : null}
       </section>
@@ -130,9 +188,14 @@ export function Calibrator() {
         {candidates.length ? (
           <ResultPanel
             candidates={candidates}
+            results={result?.results}
             preserved={result?.preserved ?? []}
             rawReply={rawReply}
             meta={result?.meta}
+            temperature={temperature}
+            temperatureBand={result?.temperatureBand}
+            requestedEndingStyle={endingStyle}
+            resolvedEndingStyle={result?.endingStyle}
             onRetry={() => runRewrite()}
             onRefine={(refinement) => runRewrite(refinement)}
           />
