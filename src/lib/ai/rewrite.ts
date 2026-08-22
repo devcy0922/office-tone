@@ -30,12 +30,14 @@ export class RewriteError extends Error {
 export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput> {
   const requestId = crypto.randomUUID();
   const started = Date.now();
+  const temperature = input.temperature ?? inferTemperatureFromTone(input);
+  const endingStyle = input.endingStyle ?? DEFAULT_ENDING_STYLE;
   const normalizedInput: RewriteInput = {
     ...input,
-    temperature: input.temperature ?? inferTemperatureFromTone(input),
-    endingStyle: input.endingStyle ?? DEFAULT_ENDING_STYLE,
+    temperature,
+    endingStyle,
   };
-  const band = temperatureBandFor(normalizedInput.temperature);
+  const band = temperatureBandFor(temperature);
 
   const baseMessages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
@@ -55,7 +57,7 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
   let generationContractOk =
     envelope.completeModes &&
     validation.candidates.length === 3 &&
-    endingStyleMatches(normalizedInput.endingStyle, envelope.resolvedEndingStyle);
+    endingStyleMatches(endingStyle, envelope.resolvedEndingStyle);
 
   if (validation.shouldRegenerate || !generationContractOk) {
     retryCount = 1;
@@ -70,7 +72,7 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
     generationContractOk =
       envelope.completeModes &&
       validation.candidates.length === 3 &&
-      endingStyleMatches(normalizedInput.endingStyle, envelope.resolvedEndingStyle);
+      endingStyleMatches(endingStyle, envelope.resolvedEndingStyle);
   }
 
   if (!validation.ok && validation.rewritten && generationContractOk) {
