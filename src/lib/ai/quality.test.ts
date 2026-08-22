@@ -84,9 +84,9 @@ describe("system prompt", () => {
   it("preserves hard semantic boundaries but allows style freedom", () => {
     expect(SYSTEM_PROMPT).toContain("절대 바꾸면 안 되는 것");
     expect(SYSTEM_PROMPT).toContain("절대 만들면 안 되는 것");
-    expect(SYSTEM_PROMPT).toContain("표현 자체는 자유롭게");
+    expect(SYSTEM_PROMPT).toContain("표현 자체는 충분히 자유롭게");
     expect(SYSTEM_PROMPT).toContain("중국어");
-    expect(SYSTEM_PROMPT).toContain('"v"');
+    expect(SYSTEM_PROMPT).toContain('"modes"');
     expect(SYSTEM_PROMPT).toContain("<raw_reply>");
   });
 

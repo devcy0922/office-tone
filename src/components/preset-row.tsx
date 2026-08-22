@@ -6,15 +6,18 @@ import { cn } from "@/lib/utils";
 
 export function PresetRow({
   value,
+  temperature,
   onChange,
 }: {
   value: ToneParameters;
-  onChange: (next: ToneParameters) => void;
+  temperature: number;
+  onChange: (next: ToneParameters, temperature: number) => void;
 }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {PRESETS.map((preset) => {
         const active =
+          temperature === preset.temperature &&
           value.directness === preset.directness &&
           value.defensiveness === preset.defensiveness &&
           value.business === preset.business;
@@ -30,11 +33,14 @@ export function PresetRow({
                 : "border-stone-200 bg-white text-stone-800 hover:border-stone-400",
               preset.id === "today" && "sm:col-span-2",
             )}
-            onClick={() => onChange({
-              directness: preset.directness,
-              defensiveness: preset.defensiveness,
-              business: preset.business,
-            })}
+            onClick={() => onChange(
+              {
+                directness: preset.directness,
+                defensiveness: preset.defensiveness,
+                business: preset.business,
+              },
+              preset.temperature,
+            )}
           >
             <span className="block text-sm font-semibold">{preset.label}</span>
             <span className={cn("mt-1 block text-xs leading-5", active ? "text-stone-300" : "text-stone-500")}>
