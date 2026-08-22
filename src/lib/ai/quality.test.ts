@@ -3,13 +3,11 @@ import { describe, expect, it } from "vitest";
 import { evaluateBusinessShift, evaluateIntentPreservation, evaluateParameterShift, evaluateReplySemantics } from "@/lib/ai/quality";
 import { inferCommunicationMeta } from "@/lib/ai/meta";
 import { looksLikeRoleReversal } from "@/lib/ai/semantics";
-import { buildDeveloperPrompt, extractJsonObject as _unused, SYSTEM_PROMPT } from "@/lib/ai/prompts";
+import { buildDeveloperPrompt, SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { extractJsonObject, hasChineseContamination, stripLabelLeak, validateOutput } from "@/lib/ai/validator";
 import { PRESETS } from "@/lib/presets";
 import { TONE_MAX, TONE_MIN } from "@/lib/ai/types";
 import { summarizeTone } from "@/lib/tone-summary";
-
-void _unused;
 
 describe("validator", () => {
   it("parses fenced JSON", () => {
