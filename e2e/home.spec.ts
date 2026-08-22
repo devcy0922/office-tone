@@ -99,7 +99,7 @@ test("context, temperature and ending style are sent as independent fields", asy
   await page.goto("/");
   await page.getByRole("button", { name: /오늘은 참지 않아요/ }).click();
   await page.getByRole("button", { name: /세부 톤·말끝 직접 조절하기/ }).click();
-  await page.getByRole("button", { name: /요메신저와 동료 대화/ }).click();
+  await page.getByRole("button", { name: /메신저와 동료 대화/ }).click();
   await page.getByRole("button", { name: /상대가 한 말도 있어요/ }).click();
   await page.getByLabel("상대가 뭐라고 했나요?").fill("DB 컬럼 미스 건 내일까지 보고 작성하세요.");
   await page.getByLabel("나는 뭐라고 답하고 싶나요?").fill("그거 제가 만든 것도 아닌데 왜 제가 써요");
