@@ -6,6 +6,7 @@ import {
   roleReversalRetryHint,
   SYSTEM_PROMPT,
 } from "@/lib/ai/prompts";
+import { inferCommunicationMeta } from "@/lib/ai/meta";
 import type { RewriteInput, RewriteOutput } from "@/lib/ai/types";
 import { validateOutput } from "@/lib/ai/validator";
 
@@ -53,9 +54,7 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
     if (!blocking.length) {
       const hangul = validation.rewritten.match(/[\uAC00-\uD7A3]/gu)?.length ?? 0;
       const cjk = validation.rewritten.match(/[\u4E00-\u9FFF]/gu)?.length ?? 0;
-      if (hangul >= 12 && hangul > cjk * 4) {
-        validation = { ...validation, ok: true };
-      }
+      if (hangul >= 12 && hangul > cjk * 4) validation = { ...validation, ok: true };
     }
   }
 
@@ -85,6 +84,7 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
     model: lastModel,
     latencyMs,
     retryCount,
+    meta: inferCommunicationMeta(input),
   };
 }
 
@@ -101,18 +101,16 @@ interface RewriteTelemetry {
 }
 
 function logRewrite(telemetry: RewriteTelemetry) {
-  console.log(
-    JSON.stringify({
-      event: "rewrite",
-      requestId: telemetry.requestId,
-      timestamp: new Date().toISOString(),
-      latencyMs: telemetry.latencyMs,
-      status: telemetry.status,
-      provider: telemetry.provider,
-      model: telemetry.model,
-      tokenUsage: telemetry.tokenUsage ?? telemetry.usage,
-      validation: telemetry.validation,
-      retryCount: telemetry.retryCount,
-    }),
-  );
+  console.log(JSON.stringify({
+    event: "rewrite",
+    requestId: telemetry.requestId,
+    timestamp: new Date().toISOString(),
+    latencyMs: telemetry.latencyMs,
+    status: telemetry.status,
+    provider: telemetry.provider,
+    model: telemetry.model,
+    tokenUsage: telemetry.tokenUsage ?? telemetry.usage,
+    validation: telemetry.validation,
+    retryCount: telemetry.retryCount,
+  }));
 }
