@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 
-import { QUICK_INTENTS, REFINEMENTS, MAX_INPUT_CHARS, TONE_MAX, TONE_MIN } from "@/lib/ai/types";
-import type { QuickIntent, Refinement, RewriteInput } from "@/lib/ai/types";
+import {
+  ENDING_STYLE_IDS,
+  QUICK_INTENTS,
+  REFINEMENTS,
+  MAX_INPUT_CHARS,
+  TEMPERATURE_MAX,
+  TEMPERATURE_MIN,
+  TONE_MAX,
+  TONE_MIN,
+} from "@/lib/ai/types";
+import type { EndingStyleId, QuickIntent, Refinement, RewriteInput } from "@/lib/ai/types";
+import { DEFAULT_ENDING_STYLE, inferTemperatureFromTone } from "@/lib/ai/generation-contracts";
 import { GoVailError } from "@/lib/ai/govail";
 import { RewriteError, rewriteMessage } from "@/lib/ai/rewrite";
 import { clientIp, consumeRateLimit } from "@/lib/rate-limit";
@@ -10,13 +20,17 @@ import { copy } from "@/lib/copy";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function clampTone(value: unknown): number | null {
+function clampNumber(value: unknown, min: number, max: number): number | null {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return null;
   const rounded = Math.round(n);
-  if (rounded < TONE_MIN) return TONE_MIN;
-  if (rounded > TONE_MAX) return TONE_MAX;
+  if (rounded < min) return min;
+  if (rounded > max) return max;
   return rounded;
+}
+
+function clampTone(value: unknown): number | null {
+  return clampNumber(value, TONE_MIN, TONE_MAX);
 }
 
 function asText(value: unknown): string {
@@ -36,6 +50,17 @@ function parseBody(body: unknown): RewriteInput | { error: string } {
   const business = clampTone(data.business);
   if (directness === null || defensiveness === null || business === null) return { error: copy.empty };
 
+  const temperature = data.temperature === undefined
+    ? inferTemperatureFromTone({ directness, defensiveness, business })
+    : clampNumber(data.temperature, TEMPERATURE_MIN, TEMPERATURE_MAX);
+  if (temperature === null) return { error: copy.empty };
+
+  let endingStyle: EndingStyleId = DEFAULT_ENDING_STYLE;
+  if (typeof data.endingStyle === "string" && data.endingStyle.trim()) {
+    if (!(ENDING_STYLE_IDS as readonly string[]).includes(data.endingStyle)) return { error: copy.empty };
+    endingStyle = data.endingStyle as EndingStyleId;
+  }
+
   let intent: QuickIntent | undefined;
   if (typeof data.intent === "string" && data.intent.trim()) {
     if (!(QUICK_INTENTS as readonly string[]).includes(data.intent)) return { error: copy.empty };
@@ -48,7 +73,17 @@ function parseBody(body: unknown): RewriteInput | { error: string } {
     refinement = data.refinement as Refinement;
   }
 
-  return { context, rawReply, directness, defensiveness, business, intent, refinement };
+  return {
+    context,
+    rawReply,
+    directness,
+    defensiveness,
+    business,
+    temperature,
+    endingStyle,
+    intent,
+    refinement,
+  };
 }
 
 export async function POST(request: Request) {
