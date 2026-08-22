@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { QUICK_INTENTS, MAX_INPUT_CHARS, TONE_MAX, TONE_MIN } from "@/lib/ai/types";
-import type { QuickIntent, RewriteInput } from "@/lib/ai/types";
+import { QUICK_INTENTS, REFINEMENTS, MAX_INPUT_CHARS, TONE_MAX, TONE_MIN } from "@/lib/ai/types";
+import type { QuickIntent, Refinement, RewriteInput } from "@/lib/ai/types";
 import { GoVailError } from "@/lib/ai/govail";
 import { RewriteError, rewriteMessage } from "@/lib/ai/rewrite";
 import { clientIp, consumeRateLimit } from "@/lib/rate-limit";
@@ -29,26 +29,26 @@ function parseBody(body: unknown): RewriteInput | { error: string } {
   const context = asText(data.context) || asText(data.situation);
   const rawReply = asText(data.rawReply) || asText(data.thought) || asText(data.text);
   if (!rawReply) return { error: copy.empty };
-  if (context.length + rawReply.length > MAX_INPUT_CHARS) {
-    return { error: "메시지가 너무 길어요. 조금 줄여주세요." };
-  }
+  if (context.length + rawReply.length > MAX_INPUT_CHARS) return { error: "메시지가 너무 길어요. 조금 줄여주세요." };
 
   const directness = clampTone(data.directness);
   const defensiveness = clampTone(data.defensiveness);
   const business = clampTone(data.business);
-  if (directness === null || defensiveness === null || business === null) {
-    return { error: copy.empty };
-  }
+  if (directness === null || defensiveness === null || business === null) return { error: copy.empty };
 
   let intent: QuickIntent | undefined;
   if (typeof data.intent === "string" && data.intent.trim()) {
-    if (!(QUICK_INTENTS as readonly string[]).includes(data.intent)) {
-      return { error: copy.empty };
-    }
+    if (!(QUICK_INTENTS as readonly string[]).includes(data.intent)) return { error: copy.empty };
     intent = data.intent as QuickIntent;
   }
 
-  return { context, rawReply, directness, defensiveness, business, intent };
+  let refinement: Refinement | undefined;
+  if (typeof data.refinement === "string" && data.refinement.trim()) {
+    if (!(REFINEMENTS as readonly string[]).includes(data.refinement)) return { error: copy.empty };
+    refinement = data.refinement as Refinement;
+  }
+
+  return { context, rawReply, directness, defensiveness, business, intent, refinement };
 }
 
 export async function POST(request: Request) {
@@ -69,19 +69,13 @@ export async function POST(request: Request) {
   }
 
   const parsed = parseBody(json);
-  if ("error" in parsed) {
-    return NextResponse.json({ error: { code: "INVALID", message: parsed.error } }, { status: 400 });
-  }
+  if ("error" in parsed) return NextResponse.json({ error: { code: "INVALID", message: parsed.error } }, { status: 400 });
 
   try {
-    const result = await rewriteMessage(parsed);
-    return NextResponse.json(result);
+    return NextResponse.json(await rewriteMessage(parsed));
   } catch (error) {
     if (error instanceof RewriteError || error instanceof GoVailError) {
-      return NextResponse.json(
-        { error: { code: error.code, message: copy.error } },
-        { status: error.status },
-      );
+      return NextResponse.json({ error: { code: error.code, message: copy.error } }, { status: error.status });
     }
     return NextResponse.json({ error: { code: "UPSTREAM", message: copy.error } }, { status: 502 });
   }
