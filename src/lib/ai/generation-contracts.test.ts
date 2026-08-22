@@ -7,7 +7,11 @@ import {
   TEMPERATURE_BANDS,
   temperatureBandFor,
 } from "@/lib/ai/generation-contracts";
-import { endingStyleMatches, normalizeGenerationOutput } from "@/lib/ai/generation-output";
+import {
+  endingStyleMatches,
+  endingStyleSurfaceMatches,
+  normalizeGenerationOutput,
+} from "@/lib/ai/generation-output";
 import { buildDeveloperPrompt, SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 describe("generation contract SSOT", () => {
@@ -20,6 +24,12 @@ describe("generation contract SSOT", () => {
       [81, 100],
     ]);
     expect(temperatureBandFor(100).id).toBe("today");
+  });
+
+  it("keeps preset directness monotonically increasing with temperature", () => {
+    const directness = TEMPERATURE_BANDS.map((band) => band.tone.directness);
+    expect(directness).toEqual([...directness].sort((a, b) => a - b));
+    expect(new Set(directness).size).toBe(directness.length);
   });
 
   it("keeps the hottest band visibly stronger than the safe default", () => {
@@ -113,7 +123,7 @@ describe("generation output envelope", () => {
       modes: {
         sendable: "이건 제 책임이 아니에요. 보고 책임까지 넘기지는 마세요.",
         pointed: "불은 제가 껐지만 화재 보고서까지 대신 쓰지는 않을게요.",
-        inner: "장애는 네가 만들고 보고서는 내가 쓰라고? 책임 떠넘기지 마.",
+        inner: "장애는 네가 만들고 보고서는 내가 쓰라고요? 책임 떠넘기는 것도 정도가 있죠.",
       },
       kept: ["책임 거부"],
     });
@@ -127,5 +137,12 @@ describe("generation output envelope", () => {
     expect(normalizeGenerationOutput('{"style":"yo","modes":{"sendable":"하나"}}').completeModes).toBe(false);
     expect(endingStyleMatches("formal", "yo")).toBe(false);
     expect(endingStyleMatches("auto", "plain")).toBe(true);
+  });
+
+  it("checks the actual Korean sentence endings instead of trusting the style field", () => {
+    expect(endingStyleSurfaceMatches("이건 제 책임이 아니에요. 책임을 넘기지는 마세요.", "yo")).toBe(true);
+    expect(endingStyleSurfaceMatches("본 건은 제 책임이 아닙니다. 담당자가 정리하십시오.", "formal")).toBe(true);
+    expect(endingStyleSurfaceMatches("불은 내가 껐다. 보고서까지 대신 쓰지는 않는다.", "plain")).toBe(true);
+    expect(endingStyleSurfaceMatches("이건 제 책임이 아닙니다. 다시 확인해 주세요.", "yo")).toBe(false);
   });
 });
