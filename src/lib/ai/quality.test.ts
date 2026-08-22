@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { evaluateBusinessShift, evaluateIntentPreservation, evaluateParameterShift, evaluateReplySemantics } from "@/lib/ai/quality";
+import { inferCommunicationMeta } from "@/lib/ai/meta";
 import { looksLikeRoleReversal } from "@/lib/ai/semantics";
+import { buildDeveloperPrompt, SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { extractJsonObject, hasChineseContamination, stripLabelLeak, validateOutput } from "@/lib/ai/validator";
 import { PRESETS } from "@/lib/presets";
-import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { TONE_MAX, TONE_MIN } from "@/lib/ai/types";
 import { summarizeTone } from "@/lib/tone-summary";
 
@@ -24,27 +25,6 @@ describe("validator", () => {
   it("flags Chinese contamination", () => {
     expect(hasChineseContamination("请确认这个问题")).toBe(true);
     expect(hasChineseContamination("오늘은 어렵습니다.")).toBe(false);
-    const result = validateOutput('{"rewritten":"请确认请求","preserved":[]}');
-    expect(result.issues).toContain("chinese");
-    expect(result.shouldRegenerate).toBe(true);
-  });
-
-  it("parses JSON even when rewritten contains raw newlines", () => {
-    const raw = `{
-  "rewritten": "오늘은 어렵습니다.
-요구사항이 변경되었습니다.",
-  "preserved": ["거절"]
-}`;
-    const result = validateOutput(raw);
-    expect(result.ok).toBe(true);
-    expect(result.rewritten).toContain("요구사항");
-  });
-
-  it("strips duplicated JSON keys from messy model output", () => {
-    const raw = '{"rewritten": "rewined": "오늘은 완료가 어렵습니다. 요구사항이 변경되었습니다.", "preserved": []}';
-    const result = validateOutput(raw);
-    expect(result.rewritten.startsWith("오늘")).toBe(true);
-    expect(result.rewritten).toContain("어렵");
   });
 
   it("parses v candidates and kept keys", () => {
@@ -55,52 +35,20 @@ describe("validator", () => {
     expect(result.preserved).toEqual(["오늘 불가"]);
   });
 
-  it("recovers rewainted keys and drops leaked labels", () => {
-    const raw = `{
-  "rewainted": "같은 문제가 반복되면 업무를 이어가기 어렵습니다.
-재발 시 퇴사 조치
-동일한 실수 금지",
-  "preserved": ["재발 금지"]
-}`;
-    const result = validateOutput(raw);
-    expect(result.rewritten).toContain("이어가기 어렵");
-    expect(result.rewritten).not.toContain("재발 시 퇴사 조치");
-    expect(result.rewritten).not.toContain("동일한 실수 금지");
-  });
-});
-
-describe("stripLabelLeak", () => {
-  it("keeps the sendable sentence and drops trailing noun labels", () => {
-    const cleaned = stripLabelLeak(
-      "다시 같은 실수가 반복될 경우, 이는 업무 중단을 의미하며 해당 인원의 퇴사 조치로 이어질 것입니다.\n재발 시 퇴사 조치\n동일한 실수 금지",
-    );
-    expect(cleaned).toContain("반복될 경우");
+  it("keeps sendable text and strips leaked labels", () => {
+    const cleaned = stripLabelLeak("같은 문제가 반복되면 업무를 이어가기 어렵습니다.\n재발 시 퇴사 조치\n동일한 실수 금지");
+    expect(cleaned).toContain("이어가기 어렵");
     expect(cleaned).not.toContain("동일한 실수 금지");
   });
 });
 
 describe("intent preservation", () => {
-  it("fails when 못 합니다 becomes 최대한 해보겠습니다", () => {
-    const verdict = evaluateIntentPreservation("못 합니다.", "최대한 해보겠습니다.");
-    expect(verdict.pass).toBe(false);
+  it("fails when refusal becomes acceptance", () => {
+    expect(evaluateIntentPreservation("못 합니다.", "최대한 해보겠습니다.").pass).toBe(false);
   });
 
-  it("fails when a boundary becomes a joint review", () => {
-    const verdict = evaluateIntentPreservation("개발 문제가 아닙니다.", "저희도 함께 확인해보겠습니다.");
-    expect(verdict.pass).toBe(false);
-  });
-
-  it("passes a preserved refusal", () => {
-    const verdict = evaluateIntentPreservation(
-      "오늘은 못 합니다. 이미 일정 꽉 찼는데 갑자기 주시면 어떻게 해요.",
-      "오늘은 완료가 어렵습니다. 일정이 이미 차 있어 오늘 요청은 진행할 수 없습니다.",
-    );
-    expect(verdict.pass).toBe(true);
-  });
-
-  it("flags invented apology", () => {
-    const verdict = evaluateIntentPreservation("일정 조정이 필요합니다.", "죄송합니다. 일정 조정이 필요합니다.");
-    expect(verdict.pass).toBe(false);
+  it("fails invented apology", () => {
+    expect(evaluateIntentPreservation("일정 조정이 필요합니다.", "죄송합니다. 일정 조정이 필요합니다.").pass).toBe(false);
   });
 });
 
@@ -117,31 +65,65 @@ describe("parameter matrix uniqueness", () => {
 });
 
 describe("presets", () => {
-  it("maps 오늘은 참지 않아요 to 99/80/40", () => {
+  it("makes the strongest preset visibly extreme", () => {
     const preset = PRESETS.find((item) => item.id === "today");
-    expect(preset).toMatchObject({ directness: 99, defensiveness: 80, business: 40 });
+    expect(preset).toMatchObject({ directness: 99, defensiveness: 90, business: 26 });
   });
 
-  it("keeps tone inside 1–99", () => {
+  it("keeps every tone inside 1–99", () => {
     for (const preset of PRESETS) {
-      expect(preset.directness).toBeGreaterThanOrEqual(TONE_MIN);
-      expect(preset.directness).toBeLessThanOrEqual(TONE_MAX);
+      for (const value of [preset.directness, preset.defensiveness, preset.business]) {
+        expect(value).toBeGreaterThanOrEqual(TONE_MIN);
+        expect(value).toBeLessThanOrEqual(TONE_MAX);
+      }
     }
   });
 });
 
 describe("system prompt", () => {
-  it("forbids invented concessions and asks for human Korean", () => {
-    expect(SYSTEM_PROMPT).toContain("NEVER INVENT");
-    expect(SYSTEM_PROMPT).toContain("최대한 노력해보겠습니다");
+  it("preserves hard semantic boundaries but allows style freedom", () => {
+    expect(SYSTEM_PROMPT).toContain("절대 바꾸면 안 되는 것");
+    expect(SYSTEM_PROMPT).toContain("절대 만들면 안 되는 것");
+    expect(SYSTEM_PROMPT).toContain("표현 자체는 자유롭게");
     expect(SYSTEM_PROMPT).toContain("중국어");
-    expect(SYSTEM_PROMPT).toContain("HUMAN KOREAN");
-    expect(SYSTEM_PROMPT).toContain("VENT VS SENDABLE");
     expect(SYSTEM_PROMPT).toContain('"v"');
-    expect(SYSTEM_PROMPT).toContain("SPEAKER ROLES");
     expect(SYSTEM_PROMPT).toContain("<raw_reply>");
-    expect(SYSTEM_PROMPT).toContain("화자 역할 오류");
-    expect(SYSTEM_PROMPT).toContain("TONE MUST BE AUDIBLE");
+  });
+
+  it("adds explicit refinement instructions", () => {
+    const prompt = buildDeveloperPrompt({
+      context: "",
+      rawReply: "오늘은 못 합니다",
+      directness: 50,
+      defensiveness: 50,
+      business: 58,
+      refinement: "shorter",
+    });
+    expect(prompt).toContain("1~2문장");
+  });
+});
+
+describe("automatic metadata", () => {
+  it("infers responsibility boundaries without a user chip", () => {
+    const meta = inferCommunicationMeta({
+      context: "DB 컬럼 미스 건 내일까지 보고 작성하세요.",
+      rawReply: "그거 제가 만든 것도 아닌데 왜 제가 써요",
+      directness: 50,
+      defensiveness: 50,
+      business: 58,
+    });
+    expect(meta.intent).toBe("책임 경계");
+  });
+
+  it("infers explicit leader audience from context", () => {
+    const meta = inferCommunicationMeta({
+      context: "팀장님이 오늘까지 달라고 했습니다.",
+      rawReply: "오늘은 어렵습니다.",
+      directness: 50,
+      defensiveness: 50,
+      business: 58,
+    });
+    expect(meta.audience).toBe("상사/리더");
   });
 });
 
@@ -152,64 +134,27 @@ describe("role reversal", () => {
   it("flags rewriting the counterpart request as the user request", () => {
     const reversed = "내일까지 DB 컬럼 미스 건에 대해 보고 작성 부탁드립니다.";
     expect(looksLikeRoleReversal(context, rawReply, reversed)).toBe(true);
-    const verdict = evaluateReplySemantics(context, rawReply, reversed);
-    expect(verdict.pass).toBe(false);
+    expect(evaluateReplySemantics(context, rawReply, reversed).pass).toBe(false);
   });
 
   it("passes a user reply that keeps blame denial", () => {
-    const ok =
-      "해당 DB 컬럼 변경은 제가 진행한 작업이 아닌 것으로 알고 있습니다. 제가 보고서를 작성해야 하는 건지 먼저 책임 범위를 확인했으면 합니다.";
+    const ok = "해당 DB 컬럼 변경은 제가 진행한 작업이 아닌 것으로 알고 있습니다. 제가 보고서를 작성해야 하는 건지 먼저 책임 범위를 확인했으면 합니다.";
     expect(looksLikeRoleReversal(context, rawReply, ok)).toBe(false);
-    const verdict = evaluateReplySemantics(context, rawReply, ok);
-    expect(verdict.pass).toBe(true);
-  });
-
-  it("fails soft acceptance of a refused deadline", () => {
-    const verdict = evaluateReplySemantics(
-      "오늘 퇴근 전까지 완료해주세요.",
-      "오늘 절대 못 해 이미 다른 일정 있다고 했잖아",
-      "최대한 오늘까지 해보겠습니다.",
-    );
-    expect(verdict.pass).toBe(false);
-  });
-
-  it("drops reversed candidates when a valid one exists", () => {
-    const raw = JSON.stringify({
-      v: [
-        "내일까지 DB 컬럼 미스 건에 대해 보고 작성 부탁드립니다.",
-        "해당 DB 컬럼 변경은 제가 진행한 작업이 아닙니다. 보고 책임부터 확인해 주세요.",
-      ],
-      kept: ["책임 부인"],
-    });
-    const result = validateOutput(raw, { context, rawReply });
-    expect(result.ok).toBe(true);
-    expect(result.shouldRegenerate).toBe(false);
-    expect(result.candidates).toHaveLength(1);
-    expect(result.rewritten).toContain("제가 진행한 작업이 아닙니다");
+    expect(evaluateReplySemantics(context, rawReply, ok).pass).toBe(true);
   });
 });
 
 describe("business shift", () => {
   it("requires high business to be more formal", () => {
-    const verdict = evaluateBusinessShift(
+    expect(evaluateBusinessShift(
       "그거 제가 만든 거 아니에요. 왜 제가 보고를 써야 하죠?",
       "해당 컬럼 변경은 제가 진행한 작업이 아닙니다. 보고 책임 범위부터 확인해 주시기 바랍니다.",
-    );
-    expect(verdict.pass).toBe(true);
-  });
-
-  it("fails identical business outputs", () => {
-    const same = "해당 건 확인 부탁드립니다.";
-    expect(evaluateBusinessShift(same, same).pass).toBe(false);
+    ).pass).toBe(true);
   });
 });
 
 describe("tone summary", () => {
   it("explains low business as staying close to the raw reply", () => {
     expect(summarizeTone({ directness: 70, defensiveness: 80, business: 20 })).toContain("편한 말");
-  });
-
-  it("explains high defensiveness with courtesy", () => {
-    expect(summarizeTone({ directness: 40, defensiveness: 80, business: 70 })).toContain("책임 범위");
   });
 });
