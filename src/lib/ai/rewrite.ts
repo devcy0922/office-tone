@@ -4,7 +4,11 @@ import {
   inferTemperatureFromTone,
   temperatureBandFor,
 } from "@/lib/ai/generation-contracts";
-import { endingStyleMatches, normalizeGenerationOutput } from "@/lib/ai/generation-output";
+import {
+  endingStyleMatches,
+  endingStyleSurfaceMatches,
+  normalizeGenerationOutput,
+} from "@/lib/ai/generation-output";
 import {
   buildDeveloperPrompt,
   buildUserPrompt,
@@ -25,6 +29,16 @@ export class RewriteError extends Error {
     super(message);
     this.name = "RewriteError";
   }
+}
+
+function generationContractSatisfied(
+  input: RewriteInput,
+  candidates: string[],
+  envelope: ReturnType<typeof normalizeGenerationOutput>,
+): boolean {
+  if (!envelope.completeModes || candidates.length !== 3 || !envelope.resolvedEndingStyle) return false;
+  if (!endingStyleMatches(input.endingStyle, envelope.resolvedEndingStyle)) return false;
+  return candidates.every((candidate) => endingStyleSurfaceMatches(candidate, envelope.resolvedEndingStyle!));
 }
 
 export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput> {
@@ -54,25 +68,19 @@ export async function rewriteMessage(input: RewriteInput): Promise<RewriteOutput
 
   let envelope = normalizeGenerationOutput(result.content);
   let validation = validateOutput(envelope.validationRaw, normalizedInput);
-  let generationContractOk =
-    envelope.completeModes &&
-    validation.candidates.length === 3 &&
-    endingStyleMatches(endingStyle, envelope.resolvedEndingStyle);
+  let generationContractOk = generationContractSatisfied(normalizedInput, validation.candidates, envelope);
 
   if (validation.shouldRegenerate || !generationContractOk) {
     retryCount = 1;
     const hint = validation.issues.includes("role_reversal")
       ? roleReversalRetryHint()
-      : `${koreanRetryHint()} 이전 응답은 세 결과 모드 또는 style 계약도 충족하지 못했다. 세 모드를 빠짐없이 서로 다른 전략으로 작성하라.`;
+      : `${koreanRetryHint()} 이전 응답은 세 결과 모드 또는 실제 종결 style 계약도 충족하지 못했다. 세 모드를 빠짐없이 서로 다른 전략으로 작성하고 선택한 말끝을 문장 전체에서 섞지 마라.`;
     result = await govailChat([...baseMessages, { role: "user", content: hint }]);
     lastModel = result.model;
     lastUsage = result.usage;
     envelope = normalizeGenerationOutput(result.content);
     validation = validateOutput(envelope.validationRaw, normalizedInput);
-    generationContractOk =
-      envelope.completeModes &&
-      validation.candidates.length === 3 &&
-      endingStyleMatches(endingStyle, envelope.resolvedEndingStyle);
+    generationContractOk = generationContractSatisfied(normalizedInput, validation.candidates, envelope);
   }
 
   if (!validation.ok && validation.rewritten && generationContractOk) {
