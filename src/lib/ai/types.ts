@@ -71,19 +71,18 @@ export type ValidationIssue =
   | "json_parse"
   | "chinese"
   | "repetition"
-  | "role_reversal"
-  | "missing_modes"
-  | "ending_style";
+  | "role_reversal";
 
 export interface ValidationResult {
   ok: boolean;
   rewritten: string;
   candidates: string[];
-  modes: Partial<RewriteModeResults>;
-  resolvedEndingStyle?: ResolvedEndingStyleId;
   preserved: string[];
   issues: ValidationIssue[];
   shouldRegenerate: boolean;
+  /** Optional structured generation metadata for forward-compatible validators. */
+  modes?: Partial<RewriteModeResults>;
+  resolvedEndingStyle?: ResolvedEndingStyleId;
 }
 
 export const TONE_MIN = 1;
