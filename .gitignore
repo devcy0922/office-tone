@@ -46,3 +46,14 @@ next-env.d.ts
 /playwright-report
 /blob-report
 /playwright/.cache
+
+# GoVail Control generated agent assets
+/.govail/
+/.agents/
+/.codex/
+/.cursor/
+/.claude/
+/.opencode/
+
+# GoVail Control generated agent assets
+/.github/skills/
