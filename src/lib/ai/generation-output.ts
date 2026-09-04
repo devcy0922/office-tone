@@ -58,7 +58,7 @@ export function endingStyleMatches(requested: EndingStyleId | undefined, resolve
 function classifySentenceEnding(sentence: string): ResolvedEndingStyleId | null {
   const text = sentence.trim();
   if (!text) return null;
-  if (/(?:습니다|입니다|합니다|됩니다|드립니다|바랍니다|십시오|주십시오)[.!?…]?$/u.test(text)) return "formal";
+  if (/(?:니다|습니다|입니다|합니다|됩니다|드립니다|바랍니다|십시오|주십시오)[.!?…]?$/u.test(text)) return "formal";
   if (/(?:요|세요|네요|죠)[.!?…]?$/u.test(text)) return "yo";
   if (/(?:다|한다|된다|없다|있다|이다|냐|나|지|라|자|야|마)[.!?…]?$/u.test(text)) return "plain";
   return null;

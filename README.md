@@ -88,10 +88,13 @@ Server route `POST /api/rewrite` calls `/v1/chat/completions`.
 
 ```bash
 pnpm test
+pnpm test:unit
 pnpm test:quality   # needs GOVAIL_API_KEY
 pnpm test:e2e
 E2E_LIVE=1 E2E_BASE_URL=https://office-tone-1037271057097.asia-northeast3.run.app pnpm test:e2e:live
 ```
+
+`pnpm test`는 `src/` 단위·계약 테스트와 `tests/` 품질 테스트를 모두 수집합니다. 품질 라이브 테스트는 `GOVAIL_API_KEY`가 있을 때만 활성화되며, CI의 기본 검증은 외부 모델 호출 없이 결정적으로 실행됩니다. PR과 `main` push에서는 GitHub Actions가 lint, 전체 테스트, production build, Playwright smoke test를 순서대로 실행합니다.
 
 Fixture types: 거절, 책임 경계, 재촉, 반박, 상사, 고객, role reversal. Parameter matrix is in `src/lib/ai/quality.ts`.
 

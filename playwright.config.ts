@@ -18,7 +18,9 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: "pnpm dev --port 3000 --hostname localhost",
+        command: process.env.CI
+          ? "pnpm start -- -p 3000"
+          : "pnpm dev --port 3000 --hostname localhost",
         url: "http://localhost:3000",
         reuseExistingServer: true,
         timeout: 120_000,
